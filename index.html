@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>파동 캡처 & 주파수 맞추기 게임</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #111; color: #fff; font-family: 'Helvetica Neue', Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        
+        /* 시작 화면 */
+        #start-screen { z-index: 10; text-align: center; }
+        .btn-primary { background: #00ffcc; color: #111; border: none; padding: 20px 40px; font-size: 1.5rem; font-weight: bold; border-radius: 50px; cursor: pointer; box-shadow: 0 0 20px rgba(0, 255, 204, 0.4); transition: transform 0.2s; }
+        .btn-primary:active { transform: scale(0.95); }
+
+        /* 메인 앱 화면 */
+        #app-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; }
+        canvas { display: block; width: 100%; height: 100%; }
+
+        /* 상태창 (HUD) */
+        #hud { position: absolute; top: 20px; left: 20px; z-index: 5; background: rgba(0, 0, 0, 0.7); padding: 15px 25px; border-radius: 12px; border: 1px solid #333; transition: all 0.3s ease; }
+        .stat { font-size: 1.2rem; margin-bottom: 10px; color: #aaa; }
+        .value { font-size: 1.8rem; font-weight: bold; color: #00ffcc; display: inline-block; min-width: 80px; text-align: right; }
+        
+        /* 게임 모드 전용 UI */
+        #game-ui { display: none; margin-top: 15px; padding-top: 15px; border-top: 1px dashed #555; text-align: center; }
+        #target-hz { font-size: 2.5rem; font-weight: bold; color: #ffb703; }
+        #game-msg { font-size: 1.2rem; font-weight: bold; color: #ffb703; margin-top: 5px; height: 24px; }
+        .success-border { border-color: #00ffcc !important; box-shadow: 0 0 30px rgba(0, 255, 204, 0.5); }
+
+        /* 조작 버튼 패널 */
+        #controls { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; gap: 15px; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 50px; }
+        .action-btn { background: #333; color: #fff; border: 1px solid #555; padding: 10px 20px; font-size: 1.1rem; border-radius: 30px; cursor: pointer; transition: 0.2s; }
+        .action-btn:hover { background: #4facfe; border-color: #4facfe; }
+        .action-btn:active { transform: scale(0.9); }
+        .btn-active { background: #ffb703; color: #111; border-color: #ffb703; }
+    </style>
+</head>
+<body>
+
+    <div id="start-screen">
+        <button id="startButton" class="btn-primary">🎙️ 마이크 켜기</button>
+        <p style="color:#aaa; margin-top:20px;">버튼을 누르고 마이크 권한을 허용해주세요.</p>
+    </div>
+
+    <div id="app-container">
+        <div id="hud">
+            <div class="stat">소리 크기: <span class="value" id="vol-val">0</span> %</div>
+            <div class="stat">주파수 (Hz): <span class="value" id="freq-val">0</span> Hz</div>
+            <div id="game-ui">
+                <div style="font-size: 1rem; color: #ccc;">목표 주파수를 맞춰보세요!</div>
+                <div id="target-hz">440 Hz</div>
+                <div id="game-msg"></div>
+            </div>
+        </div>
+
+        <div id="controls">
+            <button class="action-btn" id="btn-capture">📸 파동 캡처</button>
+            <button class="action-btn" id="btn-clear" style="display:none;">🗑️ 지우기</button>
+            <button class="action-btn" id="btn-game">🎮 게임 모드</button>
+        </div>
+
+        <canvas id="waveCanvas"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('waveCanvas');
+        const ctx = canvas.getContext('2d');
+        const hud = document.getElementById('hud');
+        let audioCtx, analyser, timeData, freqData, bufferLength;
+        let width, height;
+
+        let capturedData = null; 
+        let isGameMode = false;
+        let targetFreq = 0;
+        let matchTimer = null;
+
+        const uiVol = document.getElementById('vol-val');
+        const uiFreq = document.getElementById('freq-val');
+        const uiGame = document.getElementById('game-ui');
+        const uiTargetHz = document.getElementById('target-hz');
+        const uiGameMsg = document.getElementById('game-msg');
+        const btnCapture = document.getElementById('btn-capture');
+        const btnClear = document.getElementById('btn-clear');
+        const btnGame = document.getElementById('btn-game');
+
+        function resize() {
+            width = canvas.width = window.innerWidth * window.devicePixelRatio;
+            height = canvas.height = window.innerHeight * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+            width = window.innerWidth; height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+
+        // 💡 선생님의 아이디어를 반영하여 팝업(alert) 알림 기능이 추가된 핵심 로직
+        async function initAudio() {
+            try {
+                // 마이크 권한 요청
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                // 성공 시 팝업 띄우기
+                alert('마이크 연결 성공! 이제 소리를 내보세요.');
+                
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 2048;
+                audioCtx.createMediaStreamSource(stream).connect(analyser);
+                
+                bufferLength = analyser.frequencyBinCount;
+                timeData = new Uint8Array(bufferLength);
+                freqData = new Uint8Array(bufferLength);
+                
+                document.getElementById('start-screen').style.display = 'none';
+                document.getElementById('app-container').style.display = 'block';
+                resize(); draw();
+            } catch (err) { 
+                // 실패 시 이유를 담아 팝업 띄우기
+                alert("권한 거부 또는 오류: " + err + "\n\n(참고: 스마트폰은 보안 연결(https)이 필요합니다)"); 
+            }
+        }
+
+        function setNewTarget() {
+            targetFreq = Math.floor(Math.random() * 50) * 10 + 300;
+            uiTargetHz.innerText = targetFreq + " Hz";
+            hud.classList.remove('success-border');
+            uiGameMsg.innerText = "소리를 내보세요!";
+            uiGameMsg.style.color = "#ffb703";
+        }
+
+        function drawWaveLine(data, color, lineWidth) {
+            ctx.lineWidth = lineWidth; ctx.strokeStyle = color; ctx.beginPath();
+            const sliceWidth = width * 1.0 / bufferLength; let x = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                const v = data[i] / 128.0; const y = v * height / 2;
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                x += sliceWidth;
+            }
+            ctx.lineTo(width, height / 2); ctx.stroke();
+        }
+
+        function draw() {
+            requestAnimationFrame(draw);
+            analyser.getByteTimeDomainData(timeData);
+            analyser.getByteFrequencyData(freqData);
+
+            let sumSquares = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                let norm = (timeData[i] - 128) / 128;
+                sumSquares += norm * norm;
+            }
+            let volume = Math.min(Math.round(Math.sqrt(sumSquares / bufferLength) * 100 * 4), 100);
+            uiVol.innerText = volume;
+
+            let maxVal = -Infinity, maxIndex = -1;
+            for (let i = 0; i < bufferLength; i++) {
+                if (freqData[i] > maxVal) { maxVal = freqData[i]; maxIndex = i; }
+            }
+            let currentFreq = volume > 2 ? Math.round(maxIndex * (audioCtx.sampleRate / analyser.fftSize)) : 0;
+            uiFreq.innerText = currentFreq;
+
+            if (isGameMode && volume > 10) {
+                if (Math.abs(currentFreq - targetFreq) <= 15) {
+                    uiGameMsg.innerText = "🎉 정답! 완벽합니다!";
+                    uiGameMsg.style.color = "#00ffcc";
+                    hud.classList.add('success-border');
+                    if(!matchTimer) {
+                        matchTimer = setTimeout(() => { setNewTarget(); matchTimer = null; }, 2000);
+                    }
+                }
+            } else if (isGameMode && volume <= 10) { hud.classList.remove('success-border'); }
+
+            ctx.fillStyle = 'rgba(17, 17, 17, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+
+            if (capturedData) drawWaveLine(capturedData, 'rgba(255, 183, 3, 0.5)', 2);
+            drawWaveLine(timeData, '#00ffcc', 4);
+        }
+
+        document.getElementById('startButton').addEventListener('click', initAudio);
+
+        btnCapture.addEventListener('click', () => {
+            capturedData = new Uint8Array(timeData);
+            btnCapture.style.display = 'none'; btnClear.style.display = 'block';
+        });
+
+        btnClear.addEventListener('click', () => {
+            capturedData = null;
+            btnClear.style.display = 'none'; btnCapture.style.display = 'block';
+        });
+
+        btnGame.addEventListener('click', () => {
+            isGameMode = !isGameMode;
+            if (isGameMode) {
+                uiGame.style.display = 'block'; btnGame.innerText = '🎮 게임 끄기';
+                btnGame.classList.add('btn-active'); setNewTarget();
+            } else {
+                uiGame.style.display = 'none'; btnGame.innerText = '🎮 게임 모드';
+                btnGame.classList.remove('btn-active'); hud.classList.remove('success-border');
+            }
+        });
+    </script>
+</body>
+</html>
