@@ -84,13 +84,11 @@
         let audioCtx, analyser, timeData, freqData, bufferLength;
         let width, height;
 
-        // --- 다중 캡처 상태 변수 및 주파수 저장 변수 ---
         let capturedPath1 = null; 
         let capturedPath2 = null; 
         let capturedFreq1 = null;
         let capturedFreq2 = null;
         
-        // --- 게임 모드 상태 변수 및 계이름 데이터 ---
         let isGameMode = false;
         let isIdealMode = true;
         let currentTarget = null;
@@ -108,7 +106,6 @@
 
         let smoothVol = 0, smoothFreq = 0, phase = 0; 
 
-        // UI 요소
         const uiVol = document.getElementById('vol-val');
         const uiFreq = document.getElementById('freq-val');
         const uiNoiseGate = document.getElementById('noise-gate');
@@ -139,7 +136,6 @@
         window.addEventListener('resize', resize);
 
         async function initAudio() {
-            // [모바일 호환성] 버튼 터치 직후 즉시 AudioContext 생성 및 재개
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             }
@@ -150,16 +146,15 @@
             try {
                 let stream;
                 try {
-                    // [목소리 인식 최적화] 잡음 제거, 에코 제거, 자동 볼륨 조절 기능을 켭니다.
                     stream = await navigator.mediaDevices.getUserMedia({ 
                         audio: {
                             noiseSuppression: { ideal: true },
                             echoCancellation: { ideal: true },
-                            autoGainControl: { ideal: true }
+                            // [수정] 큰 소리/작은 소리 진폭 차이를 보존하기 위해 기기의 자동 볼륨 조절을 끕니다.
+                            autoGainControl: { ideal: false }
                         } 
                     });
                 } catch (specificErr) {
-                    // 기기가 위 옵션을 거부할 경우를 대비한 안전 장치
                     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 }
                 
@@ -225,23 +220,33 @@
                 let norm = (timeData[i] - 128) / 128;
                 sumSquares += norm * norm;
             }
-            let rawVol = Math.min(Math.round(Math.sqrt(sumSquares / bufferLength) * 100 * 4), 100);
-            uiVol.innerText = rawVol;
+            
+            // 자동 볼륨 조절이 꺼진 상태이므로, 마이크에서 들어오는 원래 수치를 적절히 증폭시킵니다.
+            let rawVol = Math.min(Math.round(Math.sqrt(sumSquares / bufferLength) * 100 * 4.0), 100);
 
             let maxVal = -Infinity, maxIndex = -1;
             for (let i = 0; i < bufferLength; i++) {
                 if (freqData[i] > maxVal) { maxVal = freqData[i]; maxIndex = i; }
             }
-            let rawFreq = rawVol > noiseThreshold ? Math.round(maxIndex * (audioCtx.sampleRate / analyser.fftSize)) : 0;
-            uiFreq.innerText = rawFreq;
+            
+            let rawFreq = rawVol > noiseThreshold ? Math.round(maxIndex * (audioCtx.sampleRate / analyser.fftSize)) : smoothFreq;
 
-            smoothVol += (rawVol - smoothVol) * 0.15;
-            smoothFreq += (rawFreq - smoothFreq) * 0.15;
-            if(smoothFreq > 10) phase += 0.1; 
+            // [수정] 볼륨은 큰 소리/작은 소리에 조금 더 기민하게 반응하도록 속도를 약간 올림 (0.05 -> 0.12)
+            smoothVol += (rawVol - smoothVol) * 0.12;
+            // 주파수(파장)는 캡처하기 쉽게 느린 속도 유지
+            smoothFreq += (rawFreq - smoothFreq) * 0.03;
+            
+            uiVol.innerText = Math.round(smoothVol);
+            uiFreq.innerText = smoothVol > noiseThreshold ? Math.round(smoothFreq) : 0;
 
+            if(smoothVol > noiseThreshold) {
+                phase += 0.04; 
+            }
+
+            // 게임 모드 로직
             if (isGameMode && !matchTimer) {
-                if (rawVol > noiseThreshold) {
-                    if (Math.abs(rawFreq - currentTarget.hz) <= 20) {
+                if (smoothVol > noiseThreshold) {
+                    if (Math.abs(Math.round(smoothFreq) - currentTarget.hz) <= 20) {
                         matchFrames++;
                         if (matchFrames >= REQUIRED_FRAMES) {
                             uiGameMsg.innerText = "🎉 정답! 훌륭합니다!";
@@ -288,7 +293,10 @@
             let effectiveVol = (smoothVol > noiseThreshold) ? smoothVol : smoothVol * 0.2; 
             
             if (isIdealMode) {
-                let amplitude = (effectiveVol / 100) * (height * 0.4); 
+                // [수정] 큰 소리와 작은 소리의 진폭 차이를 시각적으로 극대화 (지수 비례 적용)
+                let visualMultiplier = Math.pow(effectiveVol / 100, 1.2); 
+                let amplitude = visualMultiplier * (height * 0.45); 
+
                 let cycles = smoothFreq > 0 ? (smoothFreq / 100) : 0; 
                 let freqMultiplier = (cycles * Math.PI * 2) / width;
 
