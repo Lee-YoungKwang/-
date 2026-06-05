@@ -139,7 +139,7 @@
         window.addEventListener('resize', resize);
 
         async function initAudio() {
-            // [모바일 호환성 핵심] 버튼 터치 직후 즉시 AudioContext 생성 및 재개
+            // [모바일 호환성] 버튼 터치 직후 즉시 AudioContext 생성 및 재개
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             }
@@ -150,16 +150,16 @@
             try {
                 let stream;
                 try {
-                    // 1차 시도: 순음 인식을 위해 필터를 느슨하게 끕니다 (ideal 속성 사용)
+                    // [목소리 인식 최적화] 잡음 제거, 에코 제거, 자동 볼륨 조절 기능을 켭니다.
                     stream = await navigator.mediaDevices.getUserMedia({ 
                         audio: {
-                            noiseSuppression: { ideal: false },
-                            echoCancellation: { ideal: false },
-                            autoGainControl: { ideal: false }
+                            noiseSuppression: { ideal: true },
+                            echoCancellation: { ideal: true },
+                            autoGainControl: { ideal: true }
                         } 
                     });
                 } catch (specificErr) {
-                    // 2차 시도: 모바일 기기가 위 옵션을 거부하면 가장 기본 상태의 마이크 권한으로 엽니다.
+                    // 기기가 위 옵션을 거부할 경우를 대비한 안전 장치
                     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 }
                 
