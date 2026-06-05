@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>파동 캡처 & 주파수 맞추기 게임 (교육 최적화)</title>
+    <title>파동 비교 캡처 & 계이름 맞추기 게임</title>
     <style>
         body { margin: 0; overflow: hidden; background: #111; color: #fff; font-family: 'Helvetica Neue', Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
         
-        /* 시작 화면 */
         #start-screen { z-index: 10; text-align: center; }
         .btn-primary { background: #00ffcc; color: #111; border: none; padding: 20px 40px; font-size: 1.5rem; font-weight: bold; border-radius: 50px; cursor: pointer; box-shadow: 0 0 20px rgba(0, 255, 204, 0.4); transition: transform 0.2s; }
         .btn-primary:active { transform: scale(0.95); }
@@ -22,17 +21,22 @@
         
         /* 게임 모드 전용 UI */
         #game-ui { display: none; margin-top: 15px; padding-top: 15px; border-top: 1px dashed #555; text-align: center; }
-        #target-hz { font-size: 2.5rem; font-weight: bold; color: #ffb703; }
+        #target-note { font-size: 2.5rem; font-weight: bold; color: #ffb703; }
+        #target-hz-hint { font-size: 1rem; color: #888; margin-top: 5px; }
         #game-msg { font-size: 1.2rem; font-weight: bold; color: #ffb703; margin-top: 5px; height: 24px; }
         .success-border { border-color: #00ffcc !important; box-shadow: 0 0 30px rgba(0, 255, 204, 0.5); }
 
-        /* 조작 버튼 패널 */
-        #controls { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; gap: 10px; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 50px; white-space: nowrap; }
-        .action-btn { background: #333; color: #fff; border: 1px solid #555; padding: 10px 20px; font-size: 1.1rem; border-radius: 30px; cursor: pointer; transition: 0.2s; }
+        /* 하단 조작 버튼 패널 (반응형 다중 캡처 대응) */
+        #controls { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 30px; width: 90%; max-width: 600px; }
+        .action-btn { background: #333; color: #fff; border: 1px solid #555; padding: 10px 20px; font-size: 1.1rem; border-radius: 30px; cursor: pointer; transition: 0.2s; white-space: nowrap; }
         .action-btn:hover { background: #4facfe; border-color: #4facfe; }
         .action-btn:active { transform: scale(0.9); }
         .btn-active { background: #ffb703; color: #111; border-color: #ffb703; }
         .btn-mode { background: #4facfe; color: #111; font-weight: bold; border-color: #4facfe; }
+        
+        /* 캡처 버튼 색상 구분 */
+        #btn-cap1 { border-color: #ffb703; color: #ffb703; }
+        #btn-cap2 { border-color: #ff69b4; color: #ff69b4; }
     </style>
 </head>
 <body>
@@ -46,18 +50,21 @@
         <div id="hud">
             <div class="stat">소리 크기(진폭): <span class="value" id="vol-val">0</span> %</div>
             <div class="stat">소리 높낮이(Hz): <span class="value" id="freq-val">0</span> Hz</div>
+            
             <div id="game-ui">
-                <div style="font-size: 1rem; color: #ccc;">목표 주파수를 맞춰보세요!</div>
-                <div id="target-hz">440 Hz</div>
+                <div style="font-size: 1rem; color: #ccc;">목표 계이름을 맞춰보세요!</div>
+                <div id="target-note">도 (C4)</div>
+                <div id="target-hz-hint">목표 주파수: 262 Hz</div>
                 <div id="game-msg"></div>
             </div>
         </div>
 
         <div id="controls">
-            <button class="action-btn btn-mode" id="btn-mode">🌊 교과서 파형 모드</button>
-            <button class="action-btn" id="btn-capture">📸 캡처</button>
-            <button class="action-btn" id="btn-clear" style="display:none;">🗑️ 지우기</button>
-            <button class="action-btn" id="btn-game">🎮 게임</button>
+            <button class="action-btn btn-mode" id="btn-mode">🌊 교과서 파형</button>
+            <button class="action-btn" id="btn-cap1">📸 캡처 1 (노랑)</button>
+            <button class="action-btn" id="btn-cap2">📸 캡처 2 (분홍)</button>
+            <button class="action-btn" id="btn-clear" style="display:none;">🗑️ 모두 지우기</button>
+            <button class="action-btn" id="btn-game">🎮 계이름 게임</button>
         </div>
 
         <canvas id="waveCanvas"></canvas>
@@ -70,25 +77,35 @@
         let audioCtx, analyser, timeData, freqData, bufferLength;
         let width, height;
 
-        let capturedPath = null; // 캡처된 좌표 데이터 저장
+        // --- 다중 캡처 상태 변수 ---
+        let capturedPath1 = null; 
+        let capturedPath2 = null; 
+        
+        // --- 게임 모드 상태 변수 및 계이름 데이터 (4옥타브 기준) ---
         let isGameMode = false;
-        let isIdealMode = true;  // true: 예쁜 사인파, false: 실제 복잡한 파형
-        let targetFreq = 0;
+        let isIdealMode = true;
+        let currentTarget = null;
         let matchTimer = null;
+        const notes = [
+            { name: '도', hz: 262 }, { name: '레', hz: 294 },
+            { name: '미', hz: 330 }, { name: '파', hz: 349 },
+            { name: '솔', hz: 392 }, { name: '라', hz: 440 },
+            { name: '시', hz: 494 }, { name: '높은 도', hz: 523 }
+        ];
 
-        // 시각적 부드러움을 위한 보간 변수
-        let smoothVol = 0;
-        let smoothFreq = 0;
-        let phase = 0; // 파동의 좌우 이동(애니메이션) 처리
+        let smoothVol = 0, smoothFreq = 0, phase = 0; 
 
+        // UI 요소
         const uiVol = document.getElementById('vol-val');
         const uiFreq = document.getElementById('freq-val');
         const uiGame = document.getElementById('game-ui');
-        const uiTargetHz = document.getElementById('target-hz');
+        const uiTargetNote = document.getElementById('target-note');
+        const uiTargetHzHint = document.getElementById('target-hz-hint');
         const uiGameMsg = document.getElementById('game-msg');
         
         const btnMode = document.getElementById('btn-mode');
-        const btnCapture = document.getElementById('btn-capture');
+        const btnCap1 = document.getElementById('btn-cap1');
+        const btnCap2 = document.getElementById('btn-cap2');
         const btnClear = document.getElementById('btn-clear');
         const btnGame = document.getElementById('btn-game');
 
@@ -117,35 +134,42 @@
                 document.getElementById('start-screen').style.display = 'none';
                 document.getElementById('app-container').style.display = 'block';
                 resize(); draw();
-            } catch (err) { 
-                alert("권한 거부 또는 오류: " + err + "\n\n(참고: 스마트폰은 보안 연결(https)이 필요합니다)"); 
-            }
+            } catch (err) { alert("권한 거부 또는 오류: " + err + "\n\n(스마트폰은 보안 연결(https)이 필요합니다)"); }
         }
 
+        // 새로운 목표 계이름 출제 함수
         function setNewTarget() {
-            targetFreq = Math.floor(Math.random() * 50) * 10 + 300;
-            uiTargetHz.innerText = targetFreq + " Hz";
+            const randomIndex = Math.floor(Math.random() * notes.length);
+            currentTarget = notes[randomIndex];
+            
+            uiTargetNote.innerText = currentTarget.name;
+            uiTargetHzHint.innerText = "(목표 주파수: " + currentTarget.hz + " Hz)";
+            
             hud.classList.remove('success-border');
             uiGameMsg.innerText = "소리를 내보세요!";
             uiGameMsg.style.color = "#ffb703";
         }
 
-        // 모눈종이 배경 그리기 함수
         function drawGrid() {
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            // 가로선 (진폭 측정용)
+            ctx.lineWidth = 1; ctx.beginPath();
             for(let i = 0; i < height; i += 40) { ctx.moveTo(0, i); ctx.lineTo(width, i); }
-            // 세로선 (파장 측정용)
             for(let i = 0; i < width; i += 40) { ctx.moveTo(i, 0); ctx.lineTo(i, height); }
             ctx.stroke();
-
-            // 중앙 기준선
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 2; ctx.beginPath();
+            ctx.moveTo(0, height / 2); ctx.lineTo(width, height / 2); ctx.stroke();
+        }
+
+        // 반복되는 파동 그리기 로직을 별도 함수로 분리
+        function drawPath(pathArray, color, lineWidth) {
+            ctx.lineWidth = lineWidth;
+            ctx.strokeStyle = color;
             ctx.beginPath();
-            ctx.moveTo(0, height / 2); ctx.lineTo(width, height / 2);
+            for (let i = 0; i < pathArray.length; i++) {
+                if (i === 0) ctx.moveTo(pathArray[i].x, pathArray[i].y);
+                else ctx.lineTo(pathArray[i].x, pathArray[i].y);
+            }
             ctx.stroke();
         }
 
@@ -154,7 +178,6 @@
             analyser.getByteTimeDomainData(timeData);
             analyser.getByteFrequencyData(freqData);
 
-            // 1. 데이터 추출 (볼륨과 주파수)
             let sumSquares = 0;
             for (let i = 0; i < bufferLength; i++) {
                 let norm = (timeData[i] - 128) / 128;
@@ -167,126 +190,112 @@
             for (let i = 0; i < bufferLength; i++) {
                 if (freqData[i] > maxVal) { maxVal = freqData[i]; maxIndex = i; }
             }
-            // 소리가 작을 때는 주파수 0으로 처리 (잡음 방지)
             let rawFreq = rawVol > 5 ? Math.round(maxIndex * (audioCtx.sampleRate / analyser.fftSize)) : 0;
             uiFreq.innerText = rawFreq;
 
-            // 2. 부드러운 애니메이션을 위한 수학적 보간 (Lerp)
             smoothVol += (rawVol - smoothVol) * 0.15;
             smoothFreq += (rawFreq - smoothFreq) * 0.15;
-            
-            // 파동을 우측으로 흐르게 만드는 위상(Phase) 애니메이션
             if(smoothFreq > 10) phase += 0.1; 
 
-            // 게임 모드 로직
+            // 계이름 게임 정답 판정 (±20Hz 오차 허용으로 관대하게 설정)
             if (isGameMode && rawVol > 10) {
-                if (Math.abs(rawFreq - targetFreq) <= 15) {
-                    uiGameMsg.innerText = "🎉 정답! 완벽합니다!";
+                if (Math.abs(rawFreq - currentTarget.hz) <= 20) {
+                    uiGameMsg.innerText = "🎉 정답! 훌륭합니다!";
                     uiGameMsg.style.color = "#00ffcc";
                     hud.classList.add('success-border');
                     if(!matchTimer) matchTimer = setTimeout(() => { setNewTarget(); matchTimer = null; }, 2000);
                 }
             } else if (isGameMode && rawVol <= 10) { hud.classList.remove('success-border'); }
 
-            // 3. 캔버스 그리기 시작
             ctx.fillStyle = '#111';
             ctx.fillRect(0, 0, width, height);
-            drawGrid(); // 모눈종이 배경 그리기
+            drawGrid();
 
-            // 캡처된 파동 그리기
-            if (capturedPath) {
-                ctx.lineWidth = 3;
-                ctx.strokeStyle = 'rgba(255, 183, 3, 0.6)'; // 노란색 잔상
-                ctx.beginPath();
-                for (let i = 0; i < capturedPath.length; i++) {
-                    if (i === 0) ctx.moveTo(capturedPath[i].x, capturedPath[i].y);
-                    else ctx.lineTo(capturedPath[i].x, capturedPath[i].y);
-                }
-                ctx.stroke();
-            }
+            // 1번 캡처(노랑), 2번 캡처(분홍) 그리기
+            if (capturedPath1) drawPath(capturedPath1, 'rgba(255, 183, 3, 0.7)', 3);
+            if (capturedPath2) drawPath(capturedPath2, 'rgba(255, 105, 180, 0.7)', 3);
 
-            // 현재 파동 그리기 (좌표를 배열에 저장하면서 그림)
             let currentPath = [];
-            ctx.lineWidth = 4;
-            ctx.strokeStyle = '#00ffcc';
-            ctx.beginPath();
-
             if (isIdealMode) {
-                // [교과서 모드] 깨끗한 사인파 (Sine Wave) 생성
-                // 볼륨(0~100)을 화면 높이에 비례하게 매핑
                 let amplitude = (smoothVol / 100) * (height * 0.4); 
-                // 주파수(Hz)를 화면에 보일 파동의 갯수(Wavelength)로 매핑
                 let cycles = smoothFreq > 0 ? (smoothFreq / 100) : 0; 
                 let freqMultiplier = (cycles * Math.PI * 2) / width;
 
                 for (let x = 0; x <= width; x += 2) {
-                    // 수학 공식: y = 진폭 * sin(주파수 * x + 위상)
                     let y = (height / 2) + Math.sin(x * freqMultiplier - phase) * amplitude;
                     currentPath.push({x, y});
-                    if (x === 0) ctx.moveTo(x, y);
-                    else ctx.lineTo(x, y);
                 }
             } else {
-                // [실제 파형 모드] 마이크의 복합파 원본 데이터
                 const sliceWidth = width * 1.0 / bufferLength;
                 let x = 0;
                 for (let i = 0; i < bufferLength; i++) {
                     const v = timeData[i] / 128.0; 
                     const y = v * height / 2;
                     currentPath.push({x, y});
-                    if (i === 0) ctx.moveTo(x, y);
-                    else ctx.lineTo(x, y);
                     x += sliceWidth;
                 }
             }
             
-            ctx.stroke();
-            
-            // 캡처 버튼을 눌렀을 때 데이터를 가져갈 수 있도록 전역변수에 임시 저장
+            // 현재 실시간 파동(네온 그린) 그리기
+            drawPath(currentPath, '#00ffcc', 4);
             window._tempCurrentPath = currentPath;
         }
 
         // --- 이벤트 리스너 ---
         document.getElementById('startButton').addEventListener('click', initAudio);
 
-        // 파형 모드 변경 토글
         btnMode.addEventListener('click', () => {
             isIdealMode = !isIdealMode;
             if(isIdealMode) {
-                btnMode.innerText = '🌊 교과서 파형 모드';
-                btnMode.style.background = '#4facfe';
-                btnMode.style.borderColor = '#4facfe';
-                btnMode.style.color = '#111';
+                btnMode.innerText = '🌊 교과서 파형';
+                btnMode.style.background = '#4facfe'; btnMode.style.color = '#111';
             } else {
-                btnMode.innerText = '🎙️ 실제 복합파 모드';
-                btnMode.style.background = '#333';
-                btnMode.style.borderColor = '#555';
-                btnMode.style.color = '#fff';
+                btnMode.innerText = '🎙️ 실제 복합파';
+                btnMode.style.background = '#333'; btnMode.style.color = '#fff';
             }
         });
 
-        // 캡처 버튼 (현재 그려진 경로를 통째로 저장)
-        btnCapture.addEventListener('click', () => {
+        // 캡처 및 지우기 버튼 표시 관리
+        function updateClearButtonVisibility() {
+            if (capturedPath1 || capturedPath2) btnClear.style.display = 'block';
+            else btnClear.style.display = 'none';
+        }
+
+        // 캡처 1 (노랑)
+        btnCap1.addEventListener('click', () => {
             if(window._tempCurrentPath) {
-                capturedPath = [...window._tempCurrentPath];
-                btnCapture.style.display = 'none'; 
-                btnClear.style.display = 'block';
+                capturedPath1 = [...window._tempCurrentPath];
+                btnCap1.style.display = 'none';
+                updateClearButtonVisibility();
             }
         });
 
-        btnClear.addEventListener('click', () => {
-            capturedPath = null;
-            btnClear.style.display = 'none'; 
-            btnCapture.style.display = 'block';
+        // 캡처 2 (분홍)
+        btnCap2.addEventListener('click', () => {
+            if(window._tempCurrentPath) {
+                capturedPath2 = [...window._tempCurrentPath];
+                btnCap2.style.display = 'none';
+                updateClearButtonVisibility();
+            }
         });
 
+        // 모두 지우기
+        btnClear.addEventListener('click', () => {
+            capturedPath1 = null;
+            capturedPath2 = null;
+            btnCap1.style.display = 'block';
+            btnCap2.style.display = 'block';
+            updateClearButtonVisibility();
+        });
+
+        // 게임 모드 토글
         btnGame.addEventListener('click', () => {
             isGameMode = !isGameMode;
             if (isGameMode) {
                 uiGame.style.display = 'block'; btnGame.innerText = '🎮 게임 끄기';
                 btnGame.classList.add('btn-active'); setNewTarget();
             } else {
-                uiGame.style.display = 'none'; btnGame.innerText = '🎮 게임';
+                uiGame.style.display = 'none'; btnGame.innerText = '🎮 계이름 게임';
                 btnGame.classList.remove('btn-active'); hud.classList.remove('success-border');
             }
         });
