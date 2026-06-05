@@ -4,42 +4,54 @@ html = r"""<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>파동 비교 캡처 & 계이름 맞추기 게임</title>
+    <title>파동 비교 캡처 & 계이름 맞추기 게임 v3</title>
     <style>
         body { margin: 0; overflow: hidden; background: #111; color: #fff; font-family: 'Helvetica Neue', Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
         
-        #start-screen { z-index: 10; text-align: center; }
+        #start-screen { z-index: 10; text-align: center; padding: 20px; }
         .btn-primary { background: #00ffcc; color: #111; border: none; padding: 20px 40px; font-size: 1.5rem; font-weight: bold; border-radius: 50px; cursor: pointer; box-shadow: 0 0 20px rgba(0, 255, 204, 0.4); transition: transform 0.2s; }
         .btn-primary:active { transform: scale(0.95); }
 
         #app-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; }
         canvas { display: block; width: 100%; height: 100%; }
 
-        #hud { position: absolute; top: 20px; left: 20px; z-index: 5; background: rgba(0, 0, 0, 0.7); padding: 15px 25px; border-radius: 12px; border: 1px solid #333; transition: all 0.3s ease; }
-        .stat { font-size: 1.2rem; margin-bottom: 10px; color: #aaa; display: flex; align-items: center; justify-content: space-between;}
-        .value { font-size: 1.8rem; font-weight: bold; color: #00ffcc; display: inline-block; min-width: 80px; text-align: right; }
+        #hud { position: absolute; top: 15px; left: 15px; z-index: 5; background: rgba(0, 0, 0, 0.75); padding: 12px 18px; border-radius: 12px; border: 1px solid #333; transition: all 0.3s ease; min-width: 280px; }
+        .stat { font-size: 1rem; margin-bottom: 8px; color: #aaa; display: flex; align-items: center; justify-content: space-between;}
+        .value { font-size: 1.5rem; font-weight: bold; color: #00ffcc; display: inline-block; min-width: 70px; text-align: right; }
         
-        /* 피크 홀드 표시용 작은 마크 */
-        #peak-hold { font-size: 0.9rem; color: #ff69b4; margin-left: 6px; }
-        
-        input[type="range"] { margin: 0 10px; width: 80px; accent-color: #ffb703; }
+        /* [개선 1] 진폭 미터 바: 100% 천장 없음, 200%까지 표시 */
+        #vol-bar-wrap { position: relative; height: 18px; background: #222; border-radius: 4px; margin: 6px 0 12px 0; overflow: hidden; border: 1px solid #444; }
+        #vol-bar { position: absolute; left: 0; top: 0; height: 100%; width: 0%; background: #00ffcc; transition: width 0.05s linear; }
+        #vol-bar.warn { background: #ffb703; }
+        #vol-bar.clip { background: #ff3030; }
+        .vol-marks { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        .vol-marks span { position: absolute; top: 1px; font-size: 9px; color: #666; }
 
-        #game-ui { display: none; margin-top: 15px; padding-top: 15px; border-top: 1px dashed #555; text-align: center; }
-        #target-note { font-size: 2.5rem; font-weight: bold; color: #ffb703; }
-        #target-hz-hint { font-size: 1rem; color: #888; margin-top: 5px; }
-        #game-msg { font-size: 1.2rem; font-weight: bold; color: #ffb703; margin-top: 5px; height: 24px; transition: color 0.2s; }
+        /* [개선 2] 클리핑 경고등 */
+        #clip-indicator { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #333; margin-left: 8px; transition: 0.1s; }
+        #clip-indicator.on { background: #ff3030; box-shadow: 0 0 8px #ff3030; }
+
+        input[type="range"] { margin: 0 6px; width: 90px; accent-color: #ffb703; }
+
+        #game-ui { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed #555; text-align: center; }
+        #target-note { font-size: 2.2rem; font-weight: bold; color: #ffb703; }
+        #target-hz-hint { font-size: 0.85rem; color: #888; margin-top: 3px; }
+        #game-msg { font-size: 1.1rem; font-weight: bold; color: #ffb703; margin-top: 5px; height: 22px; transition: color 0.2s; }
         .success-border { border-color: #00ffcc !important; box-shadow: 0 0 30px rgba(0, 255, 204, 0.5); }
-        #note-badge { display:inline-block; background:#222; color:#ffb703; padding:2px 8px; border-radius:6px; font-size:0.9rem; margin-left:6px; }
 
-        #controls { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 30px; width: 90%; max-width: 600px; }
-        .action-btn { background: #333; color: #fff; border: 1px solid #555; padding: 10px 20px; font-size: 1.1rem; border-radius: 30px; cursor: pointer; transition: 0.2s; white-space: nowrap; }
+        #note-badge { display: inline-block; padding: 2px 7px; background: #ffb703; color: #111; border-radius: 4px; font-size: 0.85rem; font-weight: bold; margin-left: 6px; min-width: 26px; text-align: center;}
+
+        #controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; background: rgba(0,0,0,0.7); padding: 12px; border-radius: 24px; width: 92%; max-width: 640px; }
+        .action-btn { background: #333; color: #fff; border: 1px solid #555; padding: 8px 16px; font-size: 1rem; border-radius: 24px; cursor: pointer; transition: 0.2s; white-space: nowrap; }
         .action-btn:hover { background: #4facfe; border-color: #4facfe; }
-        .action-btn:active { transform: scale(0.9); }
+        .action-btn:active { transform: scale(0.92); }
         .btn-active { background: #ffb703; color: #111; border-color: #ffb703; }
         .btn-mode { background: #4facfe; color: #111; font-weight: bold; border-color: #4facfe; }
         
         #btn-cap1 { border-color: #ffb703; color: #ffb703; }
         #btn-cap2 { border-color: #ff69b4; color: #ff69b4; }
+
+        .small-label { font-size: 0.8rem; color: #888; }
     </style>
 </head>
 <body>
@@ -47,34 +59,57 @@ html = r"""<!DOCTYPE html>
     <div id="start-screen">
         <button id="startButton" class="btn-primary">🎙️ 마이크 켜기</button>
         <p style="color:#aaa; margin-top:20px;">버튼을 누르고 마이크 권한을 허용해주세요.</p>
+        <p style="color:#666; margin-top:10px; font-size:0.85rem;">v3: 진폭 측정 방식 전면 개편 (클리핑 검출 + 수동 감도)</p>
     </div>
 
     <div id="app-container">
         <div id="hud">
+            <!-- [개선 3] 진폭 표시를 % + dB + 클리핑 경고등 3종으로 -->
             <div class="stat">
-                소리 크기(진폭): 
+                소리 크기: 
                 <span>
                     <span class="value" id="vol-val">0</span>
-                    <span style="font-size:1rem; margin-left:5px;">%</span>
-                    <span id="peak-hold">▲0</span>
+                    <span style="font-size:0.9rem; margin-left:3px;">%</span>
+                    <span id="clip-indicator" title="클리핑 발생"></span>
                 </span>
             </div>
-            <div class="stat">
-                소리 높낮이(Hz): 
+            <div id="vol-bar-wrap">
+                <div id="vol-bar"></div>
+                <div class="vol-marks">
+                    <span style="left:25%">50</span>
+                    <span style="left:49%">100</span>
+                    <span style="left:74%">150</span>
+                </div>
+            </div>
+            <div class="stat small-label" style="margin-top:-4px;">
+                <span>피크 dBFS:</span>
+                <span class="value" id="db-val" style="font-size:1.1rem; color:#aaf;">-∞</span>
+            </div>
+
+            <div class="stat" style="margin-top: 8px;">
+                소리 높낮이: 
                 <span>
-                    <span class="value" id="freq-val">0</span> 
-                    <span style="font-size:1rem; margin-left:5px;">Hz</span>
-                    <span id="note-badge">—</span>
+                    <span class="value" id="freq-val">0</span>
+                    <span style="font-size:0.9rem; margin-left:3px;">Hz</span>
+                    <span id="note-badge">-</span>
                 </span>
             </div>
-            <div class="stat" style="font-size: 1rem; margin-top: 15px; border-top: 1px solid #444; padding-top: 10px;">
+            
+            <div class="stat small-label" style="margin-top: 10px; border-top: 1px solid #444; padding-top: 8px;">
                 노이즈 필터: 
-                <input type="range" id="noise-gate" min="2" max="40" value="8"> 
-                <span class="value" id="gate-val" style="min-width: 40px; font-size:1.2rem; color:#ffb703;">8</span> %
+                <input type="range" id="noise-gate" min="2" max="40" value="6"> 
+                <span id="gate-val" style="color:#ffb703; min-width:30px; text-align:right;">6</span>%
+            </div>
+
+            <!-- [개선 4] 수동 감도(Sensitivity) 슬라이더 - 0.2x ~ 3.0x -->
+            <div class="stat small-label">
+                입력 감도: 
+                <input type="range" id="sensitivity" min="20" max="300" value="100"> 
+                <span id="sens-val" style="color:#ffb703; min-width:30px; text-align:right;">1.0</span>x
             </div>
             
             <div id="game-ui">
-                <div style="font-size: 1rem; color: #ccc;">목표 계이름을 맞춰보세요!</div>
+                <div style="font-size: 0.9rem; color: #ccc;">목표 계이름을 맞춰보세요!</div>
                 <div id="target-note">도 (C4)</div>
                 <div id="target-hz-hint">목표 주파수: 262 Hz</div>
                 <div id="game-msg"></div>
@@ -83,9 +118,9 @@ html = r"""<!DOCTYPE html>
 
         <div id="controls">
             <button class="action-btn btn-mode" id="btn-mode">🌊 교과서 파형</button>
-            <button class="action-btn" id="btn-cap1">📸 캡처 1 (노랑)</button>
-            <button class="action-btn" id="btn-cap2">📸 캡처 2 (분홍)</button>
-            <button class="action-btn" id="btn-clear" style="display:none;">🗑️ 모두 지우기</button>
+            <button class="action-btn" id="btn-cap1">📸 캡처 1</button>
+            <button class="action-btn" id="btn-cap2">📸 캡처 2</button>
+            <button class="action-btn" id="btn-clear" style="display:none;">🗑️ 지우기</button>
             <button class="action-btn" id="btn-game">🎮 계이름 게임</button>
         </div>
 
@@ -93,39 +128,53 @@ html = r"""<!DOCTYPE html>
     </div>
 
     <script>
+    (function(){
         const canvas = document.getElementById('waveCanvas');
         const ctx = canvas.getContext('2d');
         const hud = document.getElementById('hud');
-        let audioCtx, analyser, timeData, freqData, bufferLength;
+        let audioCtx, analyser, timeDataF, freqData, bufferLength;
         let width, height;
 
         let capturedPath1 = null, capturedPath2 = null;
         let capturedFreq1 = null, capturedFreq2 = null;
+        let capturedNote1 = null, capturedNote2 = null;
         
         let isGameMode = false;
         let isIdealMode = true;
         let currentTarget = null;
         let matchTimer = null;
-        let matchFrames = 0; 
-        const REQUIRED_FRAMES = 15; 
+        let matchFrames = 0;
+        const REQUIRED_FRAMES = 15;
 
         const notes = [
-            { name: '도', hz: 262 }, { name: '레', hz: 294 },
-            { name: '미', hz: 330 }, { name: '파', hz: 349 },
-            { name: '솔', hz: 392 }, { name: '라', hz: 440 },
-            { name: '시', hz: 494 }, { name: '높은 도', hz: 523 }
+            { name: '도', hz: 262, label: 'C4' }, { name: '레', hz: 294, label: 'D4' },
+            { name: '미', hz: 330, label: 'E4' }, { name: '파', hz: 349, label: 'F4' },
+            { name: '솔', hz: 392, label: 'G4' }, { name: '라', hz: 440, label: 'A4' },
+            { name: '시', hz: 494, label: 'B4' }, { name: '높은 도', hz: 523, label: 'C5' }
         ];
 
-        let smoothVol = 0, smoothFreq = 0, phase = 0;
-        let peakHold = 0;       // 피크 홀드 값
-        let peakHoldTime = 0;   // 피크가 갱신된 시각
+        // === [개선 5] 진폭 관련 상태값들 ===
+        let smoothPeak = 0;       // 시각화용 부드러운 피크 (0~1+)
+        let displayVol = 0;       // 화면 표시용 % 값 (0~200)
+        let displayDb = -Infinity;// 화면 표시용 dB 값
+        let peakHold = 0;         // 최근 피크 홀드값
+        let peakHoldTime = 0;
+        let clipCount = 0;        // 클리핑 카운트
+        let clipFrames = 0;       // 클리핑 표시 잔여 프레임
+
+        let smoothFreq = 0;
+        let phase = 0;
 
         const uiVol = document.getElementById('vol-val');
+        const uiDb = document.getElementById('db-val');
         const uiFreq = document.getElementById('freq-val');
-        const uiPeakHold = document.getElementById('peak-hold');
+        const uiVolBar = document.getElementById('vol-bar');
+        const uiClipDot = document.getElementById('clip-indicator');
         const uiNoteBadge = document.getElementById('note-badge');
         const uiNoiseGate = document.getElementById('noise-gate');
         const uiGateVal = document.getElementById('gate-val');
+        const uiSens = document.getElementById('sensitivity');
+        const uiSensVal = document.getElementById('sens-val');
         const uiGame = document.getElementById('game-ui');
         const uiTargetNote = document.getElementById('target-note');
         const uiTargetHzHint = document.getElementById('target-hz-hint');
@@ -138,116 +187,155 @@ html = r"""<!DOCTYPE html>
         const btnGame = document.getElementById('btn-game');
 
         let noiseThreshold = parseInt(uiNoiseGate.value);
-        uiNoiseGate.addEventListener('input', (e) => {
+        let sensitivity = 1.0; // 입력 배율
+
+        uiNoiseGate.addEventListener('input', e => {
             noiseThreshold = parseInt(e.target.value);
             uiGateVal.innerText = noiseThreshold;
         });
+        uiSens.addEventListener('input', e => {
+            sensitivity = parseInt(e.target.value) / 100;
+            uiSensVal.innerText = sensitivity.toFixed(1);
+        });
 
         function resize() {
-            width = canvas.width = window.innerWidth * window.devicePixelRatio;
-            height = canvas.height = window.innerHeight * window.devicePixelRatio;
-            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-            width = window.innerWidth; height = window.innerHeight;
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            ctx.setTransform(1,0,0,1,0,0);
+            ctx.scale(dpr, dpr);
+            width = window.innerWidth;
+            height = window.innerHeight;
         }
         window.addEventListener('resize', resize);
 
-        async function initAudio() {
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            if (audioCtx.state === 'suspended') await audioCtx.resume();
-
-            try {
-                let stream;
-                // [개선 A] AGC/노이즈억제/에코를 'exact:false'로 강하게 끄도록 시도
-                // 일부 기기는 ideal:false를 무시하기 때문에 exact 제약으로 강제합니다.
-                const strictConstraints = {
+        // === [개선 6] AGC/노이즈억제 강제 차단 (모든 변형 시도) ===
+        async function getMicStream() {
+            const attempts = [
+                // 1차: 표준 + Chrome legacy 모두 끄기
+                {
                     audio: {
-                        autoGainControl:   { exact: false },
-                        noiseSuppression:  { exact: false },
-                        echoCancellation:  { exact: false }
+                        autoGainControl: { exact: false },
+                        noiseSuppression: { exact: false },
+                        echoCancellation: { exact: false },
+                        googAutoGainControl: false,
+                        googAutoGainControl2: false,
+                        googNoiseSuppression: false,
+                        googHighpassFilter: false,
+                        googEchoCancellation: false,
+                        googTypingNoiseDetection: false,
+                        latency: 0
                     }
-                };
-                const fallbackConstraints = {
+                },
+                // 2차: 표준만 (ideal로 완화)
+                {
                     audio: {
                         autoGainControl: false,
                         noiseSuppression: false,
                         echoCancellation: false
                     }
-                };
+                },
+                // 3차: 폴백
+                { audio: true }
+            ];
+            let lastErr;
+            for (const c of attempts) {
                 try {
-                    stream = await navigator.mediaDevices.getUserMedia(strictConstraints);
-                } catch (e1) {
-                    try {
-                        stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
-                    } catch (e2) {
-                        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const s = await navigator.mediaDevices.getUserMedia(c);
+                    console.log('[mic] 성공한 옵션:', c);
+                    const track = s.getAudioTracks()[0];
+                    if (track && track.getSettings) {
+                        console.log('[mic] 적용된 설정:', track.getSettings());
                     }
-                }
-                
+                    return s;
+                } catch (e) { lastErr = e; }
+            }
+            throw lastErr;
+        }
+
+        async function initAudio() {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+                const stream = await getMicStream();
                 analyser = audioCtx.createAnalyser();
                 analyser.fftSize = 4096;
-                analyser.smoothingTimeConstant = 0.0; // 분석값 자체는 평활하지 않음 (우리가 직접 제어)
+                analyser.smoothingTimeConstant = 0; // 우리가 직접 스무딩 제어
                 audioCtx.createMediaStreamSource(stream).connect(analyser);
                 
                 bufferLength = analyser.fftSize;
-                timeData = new Float32Array(bufferLength);
+                timeDataF = new Float32Array(bufferLength);
                 freqData = new Float32Array(analyser.frequencyBinCount);
                 
                 document.getElementById('start-screen').style.display = 'none';
                 document.getElementById('app-container').style.display = 'block';
-                resize(); draw();
-            } catch (err) { 
-                alert("마이크를 켤 수 없습니다. 브라우저 설정에서 마이크 권한을 허용해주세요!\n\n오류 내용: " + err.message); 
+                resize();
+                draw();
+            } catch (err) {
+                alert("마이크를 켤 수 없습니다.\n오류: " + err.message);
             }
         }
 
-        // ===== 자기상관 기반 피치 검출 =====
-        function autoCorrelate(buf, sampleRate) {
+        // === [개선 7] 자기상관 피치 검출 (이전 버전 유지) ===
+        function detectPitchAutocorr(buf, sampleRate) {
             const SIZE = buf.length;
             let rms = 0;
-            for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
+            for (let i = 0; i < SIZE; i++) rms += buf[i]*buf[i];
             rms = Math.sqrt(rms / SIZE);
             if (rms < 0.005) return -1;
 
-            let r1 = 0, r2 = SIZE - 1, thres = 0.2;
-            for (let i = 0; i < SIZE / 2; i++) if (Math.abs(buf[i]) < thres) { r1 = i; break; }
-            for (let i = 1; i < SIZE / 2; i++) if (Math.abs(buf[SIZE - i]) < thres) { r2 = SIZE - i; break; }
-            const trimmed = buf.slice(r1, r2);
-            const newSize = trimmed.length;
+            let r1 = 0, r2 = SIZE - 1;
+            const thres = 0.2;
+            for (let i = 0; i < SIZE/2; i++) if (Math.abs(buf[i]) < thres) { r1 = i; break; }
+            for (let i = 1; i < SIZE/2; i++) if (Math.abs(buf[SIZE-i]) < thres) { r2 = SIZE-i; break; }
+            const trimmed = buf.subarray(r1, r2);
+            const T = trimmed.length;
+            if (T < 64) return -1;
 
-            const c = new Array(newSize).fill(0);
-            for (let i = 0; i < newSize; i++) {
-                for (let j = 0; j < newSize - i; j++) c[i] += trimmed[j] * trimmed[j + i];
+            const c = new Float32Array(T);
+            for (let i = 0; i < T; i++) {
+                let sum = 0;
+                for (let j = 0; j < T - i; j++) sum += trimmed[j] * trimmed[j+i];
+                c[i] = sum;
             }
-            let d = 0; while (d < newSize - 1 && c[d] > c[d + 1]) d++;
-            let maxval = -1, maxpos = -1;
-            for (let i = d; i < newSize; i++) {
-                if (c[i] > maxval) { maxval = c[i]; maxpos = i; }
+            let d = 0;
+            while (d < T - 1 && c[d] > c[d+1]) d++;
+            let maxv = -1, maxi = -1;
+            for (let i = d; i < T; i++) {
+                if (c[i] > maxv) { maxv = c[i]; maxi = i; }
             }
-            if (maxpos <= 0) return -1;
-            let T0 = maxpos;
-            const x1 = c[T0 - 1] || 0, x2 = c[T0], x3 = c[T0 + 1] || 0;
-            const a = (x1 + x3 - 2 * x2) / 2, b = (x3 - x1) / 2;
-            if (a) T0 = T0 - b / (2 * a);
+            if (maxi <= 0) return -1;
+            let T0 = maxi;
+            const x1 = c[maxi-1] || 0, x2 = c[maxi], x3 = c[maxi+1] || 0;
+            const a = (x1 + x3 - 2*x2) / 2;
+            const b = (x3 - x1) / 2;
+            if (a) T0 -= b / (2*a);
             return sampleRate / T0;
         }
 
-        function hzToNoteName(hz) {
-            if (!hz || hz <= 0) return "—";
-            let best = notes[0], bestCents = 1e9;
-            for (const n of notes) {
-                const cents = Math.abs(1200 * Math.log2(hz / n.hz));
-                if (cents < bestCents) { bestCents = cents; best = n; }
+        function findNearestNote(hz) {
+            if (!hz || hz <= 0) return null;
+            let best = null, bestDiff = Infinity;
+            const allNotes = [];
+            const baseNames = ['도','도#','레','레#','미','파','파#','솔','솔#','라','라#','시'];
+            for (let oct = 2; oct <= 6; oct++) {
+                for (let i = 0; i < 12; i++) {
+                    const noteHz = 440 * Math.pow(2, (oct-4) + (i-9)/12);
+                    allNotes.push({ name: baseNames[i], hz: noteHz, oct });
+                }
             }
-            return bestCents < 100 ? best.name : "—";
+            for (const n of allNotes) {
+                const cents = Math.abs(1200 * Math.log2(hz / n.hz));
+                if (cents < bestDiff) { bestDiff = cents; best = n; }
+            }
+            return { note: best, cents: bestDiff };
         }
 
         function setNewTarget() {
-            const randomIndex = Math.floor(Math.random() * notes.length);
-            currentTarget = notes[randomIndex];
+            currentTarget = notes[Math.floor(Math.random() * notes.length)];
             matchFrames = 0;
-            uiTargetNote.innerText = currentTarget.name;
+            uiTargetNote.innerText = currentTarget.name + ' (' + currentTarget.label + ')';
             uiTargetHzHint.innerText = "(목표 주파수: " + currentTarget.hz + " Hz)";
             hud.classList.remove('success-border');
             uiGameMsg.innerText = "소리를 내보세요!";
@@ -255,109 +343,119 @@ html = r"""<!DOCTYPE html>
         }
 
         function drawGrid() {
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
+            ctx.strokeStyle = 'rgba(255,255,255,0.07)';
             ctx.lineWidth = 1; ctx.beginPath();
-            for(let i = 0; i < height; i += 40) { ctx.moveTo(0, i); ctx.lineTo(width, i); }
-            for(let i = 0; i < width; i += 40) { ctx.moveTo(i, 0); ctx.lineTo(i, height); }
+            for (let i = 0; i < height; i += 40) { ctx.moveTo(0,i); ctx.lineTo(width,i); }
+            for (let i = 0; i < width; i += 40) { ctx.moveTo(i,0); ctx.lineTo(i,height); }
             ctx.stroke();
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
             ctx.lineWidth = 2; ctx.beginPath();
-            ctx.moveTo(0, height / 2); ctx.lineTo(width, height / 2); ctx.stroke();
+            ctx.moveTo(0, height/2); ctx.lineTo(width, height/2); ctx.stroke();
         }
 
-        function drawPath(pathArray, color, lineWidth) {
-            if (pathArray.length === 0) return;
-            ctx.lineWidth = lineWidth;
+        function drawPath(path, color, lw) {
+            if (!path || path.length === 0) return;
+            ctx.lineWidth = lw;
             ctx.strokeStyle = color;
             ctx.beginPath();
-            for (let i = 0; i < pathArray.length; i++) {
-                if (i === 0) ctx.moveTo(pathArray[i].x, pathArray[i].y);
-                else ctx.lineTo(pathArray[i].x, pathArray[i].y);
+            for (let i = 0; i < path.length; i++) {
+                if (i === 0) ctx.moveTo(path[i].x, path[i].y);
+                else ctx.lineTo(path[i].x, path[i].y);
             }
             ctx.stroke();
         }
 
         function draw() {
             requestAnimationFrame(draw);
-            analyser.getFloatTimeDomainData(timeData);
+            analyser.getFloatTimeDomainData(timeDataF);
 
-            // ===== [핵심 개선] RMS + 피크(Peak)를 함께 측정 =====
-            let sumSquares = 0;
-            let peakSample = 0;
+            // === [개선 8] 원시 피크 직접 측정 (dB 변환 전) ===
+            // 감도(sensitivity) 적용 후 절댓값 최댓값 계산
+            let rawPeak = 0;       // 원시 피크 (0~1+)
+            let clipped = false;
             for (let i = 0; i < bufferLength; i++) {
-                const v = timeData[i];
-                sumSquares += v * v;
-                const absV = v < 0 ? -v : v;
-                if (absV > peakSample) peakSample = absV;
+                const v = timeDataF[i] * sensitivity;
+                const a = Math.abs(v);
+                if (a > rawPeak) rawPeak = a;
+                // 클리핑 검출: 0.985 이상이 연속으로 나오면 클리핑
+                if (Math.abs(timeDataF[i]) > 0.985) clipped = true;
             }
-            const rms = Math.sqrt(sumSquares / bufferLength);
 
-            // [개선 B] 피크 dBFS 사용 — 화면 파형 높이와 직결되는 값
-            const peakDb = 20 * Math.log10(peakSample + 1e-10);
+            // === [개선 9] 피크 기반 dBFS 계산 ===
+            // 0.0 → -∞ dB,  1.0 → 0 dB,  > 1.0 → 양수 dB (과증폭 표시)
+            const dbfs = rawPeak > 0.00001 ? 20 * Math.log10(rawPeak) : -Infinity;
 
-            // [개선 C] dB 매핑 범위를 -75dB ~ -3dB로 확장 (이전: -60 ~ 0)
-            //  → "엄청 큰 소리"가 들어올 자리(상단)에 여유 공간 확보
-            //  → 작은 소리(말소리 -20dB대)는 약 55% 부근에서 시작
-            const MIN_DB = -75;
-            const MAX_DB = -3;
-            let frac = (peakDb - MIN_DB) / (MAX_DB - MIN_DB);
-            frac = Math.max(0, Math.min(1, frac));
+            // === [개선 10] 시각용 부드러운 피크 (어택 빠름, 릴리즈 느림) ===
+            if (rawPeak > smoothPeak) smoothPeak += (rawPeak - smoothPeak) * 0.6; // 빠른 어택
+            else smoothPeak += (rawPeak - smoothPeak) * 0.12; // 느린 릴리즈
 
-            // [개선 D] 비선형 곡선: 작은 소리 영역은 살짝 빠르게, 큰 소리는 천천히 100%로
-            //  exponent 0.8 → 중간~큰 소리에서 변화 폭이 잘 보이도록 분산
-            const rawVol = Math.pow(frac, 0.8) * 100;
+            // === [개선 11] 화면 % 표시 (피크 1.0 = 100%, 최대 200% 표시) ===
+            const volPct = Math.min(smoothPeak * 100, 200);
+            displayVol = volPct;
+            displayDb = dbfs;
 
-            // ===== 피치 검출 (자기상관) =====
-            let detectedHz = -1;
-            if (rms > 0.005) detectedHz = autoCorrelate(timeData, audioCtx.sampleRate);
-            const rawFreq = (detectedHz > 30 && detectedHz < 2000) ? detectedHz : smoothFreq;
-
-            // [개선 E] 진폭 평활화: 빠른 상승(어택) + 느린 하강(릴리즈)
-            //  → 순간 큰 소리도 시각적으로 즉시 튀어 보이게
-            const attack = 0.55;   // 상승 속도 (값이 클수록 빠름)
-            const release = 0.15;  // 하강 속도
-            const alphaV = rawVol > smoothVol ? attack : release;
-            smoothVol += (rawVol - smoothVol) * alphaV;
-
-            smoothFreq += (rawFreq - smoothFreq) * 0.15;
-
-            // [개선 F] 피크 홀드(약 1초간 최고치 유지 후 천천히 하강)
+            // 피크 홀드 (최근 1초 최대값)
             const now = performance.now();
-            if (smoothVol > peakHold) {
-                peakHold = smoothVol;
+            if (volPct >= peakHold || now - peakHoldTime > 1000) {
+                peakHold = volPct;
                 peakHoldTime = now;
-            } else if (now - peakHoldTime > 1000) {
-                peakHold = Math.max(smoothVol, peakHold - 0.4);
             }
 
-            uiVol.innerText = Math.round(smoothVol);
-            uiPeakHold.innerText = "▲" + Math.round(peakHold);
-            uiFreq.innerText = smoothVol > noiseThreshold ? Math.round(smoothFreq) : 0;
-            uiNoteBadge.innerText = smoothVol > noiseThreshold ? hzToNoteName(smoothFreq) : "—";
+            // === [개선 12] 클리핑 표시 ===
+            if (clipped) clipFrames = 30; // 0.5초간 표시 유지
+            if (clipFrames > 0) {
+                uiClipDot.classList.add('on');
+                clipFrames--;
+            } else {
+                uiClipDot.classList.remove('on');
+            }
 
-            if (smoothVol > noiseThreshold) phase += 0.04; 
+            // UI 갱신
+            uiVol.innerText = Math.round(volPct);
+            uiDb.innerText = isFinite(dbfs) ? dbfs.toFixed(1) + ' dB' : '-∞';
 
-            // ===== 게임 로직 (센트 단위로 판정) =====
+            // 진폭 바: 200% 기준
+            const barPct = Math.min(volPct / 200 * 100, 100);
+            uiVolBar.style.width = barPct + '%';
+            uiVolBar.className = '';
+            if (volPct >= 100) uiVolBar.className = 'clip';
+            else if (volPct >= 70) uiVolBar.className = 'warn';
+
+            // === [개선 13] 노이즈 게이트는 피크 기준으로 ===
+            const aboveGate = volPct > noiseThreshold;
+
+            // 주파수 검출
+            let rawFreq = aboveGate ? detectPitchAutocorr(timeDataF, audioCtx.sampleRate) : -1;
+            if (rawFreq > 50 && rawFreq < 2000) {
+                smoothFreq += (rawFreq - smoothFreq) * 0.18;
+            }
+            uiFreq.innerText = aboveGate && smoothFreq > 0 ? Math.round(smoothFreq) : 0;
+
+            const nearest = aboveGate && smoothFreq > 0 ? findNearestNote(smoothFreq) : null;
+            uiNoteBadge.innerText = nearest ? nearest.note.name : '-';
+
+            if (aboveGate) phase += 0.04;
+
+            // 게임 모드 (이전과 동일)
             if (isGameMode && !matchTimer) {
-                if (smoothVol > noiseThreshold && smoothFreq > 30) {
-                    const cents = Math.abs(1200 * Math.log2(smoothFreq / currentTarget.hz));
-                    if (cents <= 50) {
+                if (aboveGate && smoothFreq > 0) {
+                    const cents = 1200 * Math.log2(smoothFreq / currentTarget.hz);
+                    if (Math.abs(cents) <= 50) {
                         matchFrames++;
                         if (matchFrames >= REQUIRED_FRAMES) {
-                            uiGameMsg.innerText = "🎉 정답! 훌륭합니다!";
+                            uiGameMsg.innerText = "🎉 정답!";
                             uiGameMsg.style.color = "#00ffcc";
                             hud.classList.add('success-border');
                             matchTimer = setTimeout(() => { setNewTarget(); matchTimer = null; }, 2000);
                         } else {
-                            const progress = Math.min(Math.floor((matchFrames / REQUIRED_FRAMES) * 100), 99);
-                            uiGameMsg.innerText = "유지하세요... " + progress + "%";
+                            const p = Math.min(Math.floor(matchFrames/REQUIRED_FRAMES*100), 99);
+                            uiGameMsg.innerText = `유지하세요... ${p}%`;
                             uiGameMsg.style.color = "#ffb703";
                         }
                     } else {
                         matchFrames = 0;
-                        const diff = 1200 * Math.log2(smoothFreq / currentTarget.hz);
-                        uiGameMsg.innerText = diff > 0 ? "↓ 조금 낮게" : "↑ 조금 높게";
-                        uiGameMsg.style.color = "#ffb703";
+                        uiGameMsg.innerText = cents > 0 ? "↓ 조금 낮게" : "↑ 조금 높게";
+                        uiGameMsg.style.color = "#fff";
                     }
                 } else {
                     matchFrames = 0;
@@ -366,57 +464,63 @@ html = r"""<!DOCTYPE html>
                 }
             }
 
+            // === 캔버스 그리기 ===
             ctx.fillStyle = '#111';
-            ctx.fillRect(0, 0, width, height);
+            ctx.fillRect(0,0,width,height);
             drawGrid();
 
-            ctx.font = "bold 20px 'Helvetica Neue', Arial, sans-serif";
-            ctx.textAlign = "right"; ctx.textBaseline = "top";
+            ctx.font = "bold 18px 'Helvetica Neue', Arial, sans-serif";
+            ctx.textAlign = "right";
+            ctx.textBaseline = "top";
 
             if (capturedPath1) {
-                drawPath(capturedPath1, 'rgba(255, 183, 3, 0.7)', 3);
-                ctx.fillStyle = 'rgba(255, 183, 3, 1)';
-                ctx.fillText("캡처 1: " + capturedFreq1 + " Hz", width - 20, 20);
+                drawPath(capturedPath1, 'rgba(255,183,3,0.7)', 3);
+                ctx.fillStyle = 'rgba(255,183,3,1)';
+                ctx.fillText(`캡처1: ${capturedFreq1}Hz ${capturedNote1||''}`, width-20, 20);
             }
             if (capturedPath2) {
-                drawPath(capturedPath2, 'rgba(255, 105, 180, 0.7)', 3);
-                ctx.fillStyle = 'rgba(255, 105, 180, 1)';
-                ctx.fillText("캡처 2: " + capturedFreq2 + " Hz", width - 20, 50);
+                drawPath(capturedPath2, 'rgba(255,105,180,0.7)', 3);
+                ctx.fillStyle = 'rgba(255,105,180,1)';
+                ctx.fillText(`캡처2: ${capturedFreq2}Hz ${capturedNote2||''}`, width-20, 48);
             }
 
+            // === [개선 14] 시각 파형 진폭은 'smoothPeak'를 직접 사용 ===
+            // (% 값이 아닌 원시 피크라서 측정값과 그래프가 정확히 일치)
             let currentPath = [];
-            const effectiveVol = (smoothVol > noiseThreshold) ? smoothVol : smoothVol * 0.2;
-
+            
             if (isIdealMode) {
-                // [개선 G] 시각 진폭 곡선을 부드럽게 (exponent 1.0 → 음량 비례 그대로)
-                //  이전 1.2는 작은 소리를 너무 짓눌렀음
-                const visualMultiplier = effectiveVol / 100;
-                const amplitude = visualMultiplier * (height * 0.45);
+                // smoothPeak 1.0 = 화면 절반 높이
+                // 200% 입력에서는 화면을 넘쳐도 보이게 (클리핑이 시각화됨)
+                let amplitude = smoothPeak * (height * 0.45);
+                if (!aboveGate) amplitude *= 0.15;
 
-                // 교과서 파형의 주기 수: Hz / 80 (도262Hz≈3.3주기, 솔392Hz≈4.9주기)
                 const cycles = smoothFreq > 0 ? (smoothFreq / 80) : 0;
-                const freqMultiplier = (cycles * Math.PI * 2) / width;
+                const freqMul = (cycles * Math.PI * 2) / width;
 
                 for (let x = 0; x <= width; x += 2) {
-                    const y = (height / 2) + Math.sin(x * freqMultiplier - phase) * amplitude;
-                    currentPath.push({ x, y });
+                    const y = (height/2) + Math.sin(x*freqMul - phase) * amplitude;
+                    currentPath.push({x, y});
                 }
             } else {
-                // [개선 H] 실제 파형도 시각 게인을 적용해 큰 소리/작은 소리 차이가 더 잘 보이게
-                //  Float32 데이터를 직접 사용 (-1.0 ~ +1.0)
-                const sliceWidth = width / bufferLength;
-                const gain = 1.5;  // 시각 증폭
-                let x = 0;
-                for (let i = 0; i < bufferLength; i++) {
-                    let v = timeData[i] * gain;
-                    if (rms < 0.005) v *= 0.2;
-                    const y = (height / 2) + v * (height / 2);
-                    currentPath.push({ x, y });
-                    x += sliceWidth;
+                // 실제 복합파: 원시 신호 직접 그리기 + 감도 적용
+                const step = Math.floor(bufferLength / width) || 1;
+                for (let x = 0, i = 0; x < width && i < bufferLength; x++, i += step) {
+                    const v = timeDataF[i] * sensitivity;
+                    const y = (height/2) - v * (height * 0.45);
+                    currentPath.push({x, y});
                 }
             }
             
             drawPath(currentPath, '#00ffcc', 4);
+
+            // 피크 홀드 마커 (분홍색)
+            if (peakHold > 5) {
+                ctx.fillStyle = '#ff69b4';
+                ctx.textAlign = 'left';
+                ctx.font = "bold 13px Arial";
+                ctx.fillText(`▲ ${Math.round(peakHold)}%`, 15, height/2 - peakHold/200 * (height*0.45) - 18);
+            }
+
             window._tempCurrentPath = currentPath;
         }
 
@@ -433,49 +537,56 @@ html = r"""<!DOCTYPE html>
             }
         });
 
-        function updateClearButtonVisibility() {
+        function updateClearVis() {
             btnClear.style.display = (capturedPath1 || capturedPath2) ? 'block' : 'none';
         }
-
         btnCap1.addEventListener('click', () => {
             if (window._tempCurrentPath) {
                 capturedPath1 = [...window._tempCurrentPath];
                 capturedFreq1 = uiFreq.innerText;
+                capturedNote1 = uiNoteBadge.innerText;
                 btnCap1.style.display = 'none';
-                updateClearButtonVisibility();
+                updateClearVis();
             }
         });
         btnCap2.addEventListener('click', () => {
             if (window._tempCurrentPath) {
                 capturedPath2 = [...window._tempCurrentPath];
                 capturedFreq2 = uiFreq.innerText;
+                capturedNote2 = uiNoteBadge.innerText;
                 btnCap2.style.display = 'none';
-                updateClearButtonVisibility();
+                updateClearVis();
             }
         });
         btnClear.addEventListener('click', () => {
-            capturedPath1 = null; capturedPath2 = null;
-            capturedFreq1 = null; capturedFreq2 = null;
-            btnCap1.style.display = 'block'; btnCap2.style.display = 'block';
-            updateClearButtonVisibility();
+            capturedPath1 = capturedPath2 = null;
+            capturedFreq1 = capturedFreq2 = null;
+            capturedNote1 = capturedNote2 = null;
+            btnCap1.style.display = 'block';
+            btnCap2.style.display = 'block';
+            updateClearVis();
         });
         btnGame.addEventListener('click', () => {
             isGameMode = !isGameMode;
             if (isGameMode) {
-                uiGame.style.display = 'block'; btnGame.innerText = '🎮 게임 끄기';
-                btnGame.classList.add('btn-active'); setNewTarget();
+                uiGame.style.display = 'block';
+                btnGame.innerText = '🎮 게임 끄기';
+                btnGame.classList.add('btn-active');
+                setNewTarget();
             } else {
-                uiGame.style.display = 'none'; btnGame.innerText = '🎮 계이름 게임';
-                btnGame.classList.remove('btn-active'); hud.classList.remove('success-border');
+                uiGame.style.display = 'none';
+                btnGame.innerText = '🎮 계이름 게임';
+                btnGame.classList.remove('btn-active');
+                hud.classList.remove('success-border');
                 if (matchTimer) { clearTimeout(matchTimer); matchTimer = null; }
             }
         });
+    })();
     </script>
 </body>
 </html>
 """
-
-with open('/home/user/wave_game_v2.html', 'w', encoding='utf-8') as f:
+with open('/home/user/wave_v3.html', 'w', encoding='utf-8') as f:
     f.write(html)
-print("파일 크기:", len(html), "bytes")
-print("저장 완료")
+print('파일 크기:', len(html), 'bytes')
+print('저장 완료')
