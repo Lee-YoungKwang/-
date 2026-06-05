@@ -142,8 +142,8 @@
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     audio: {
-                        noiseSuppression: true, 
-                        echoCancellation: true,
+                        noiseSuppression: false, // 브라우저 잡음 제거 기능 끄기
+                        echoCancellation: false, // 에코 제거 기능 끄기
                         autoGainControl: false
                     } 
                 });
