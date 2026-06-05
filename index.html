@@ -84,9 +84,11 @@
         let audioCtx, analyser, timeData, freqData, bufferLength;
         let width, height;
 
-        // --- 다중 캡처 상태 변수 ---
+        // --- 다중 캡처 상태 변수 및 주파수 저장 변수 ---
         let capturedPath1 = null; 
         let capturedPath2 = null; 
+        let capturedFreq1 = null;
+        let capturedFreq2 = null;
         
         // --- 게임 모드 상태 변수 및 계이름 데이터 ---
         let isGameMode = false;
@@ -94,7 +96,6 @@
         let currentTarget = null;
         let matchTimer = null;
         
-        // 정답 판정용 프레임 카운터 (약 0.3초 유지해야 정답 처리)
         let matchFrames = 0; 
         const REQUIRED_FRAMES = 15; 
 
@@ -123,7 +124,6 @@
         const btnClear = document.getElementById('btn-clear');
         const btnGame = document.getElementById('btn-game');
 
-        // 노이즈 필터 값 연동
         let noiseThreshold = parseInt(uiNoiseGate.value);
         uiNoiseGate.addEventListener('input', (e) => {
             noiseThreshold = parseInt(e.target.value);
@@ -140,12 +140,11 @@
 
         async function initAudio() {
             try {
-                // 노이즈 캔슬링 및 에코 제거 옵션 추가
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     audio: {
                         noiseSuppression: true, 
                         echoCancellation: true,
-                        autoGainControl: false // 순수 음정 측정을 위해 자동 볼륨 조절은 끕니다.
+                        autoGainControl: false
                     } 
                 });
                 alert('마이크 연결 성공! 슬라이더를 조절해 주변 소음을 차단하세요.');
@@ -168,7 +167,7 @@
         function setNewTarget() {
             const randomIndex = Math.floor(Math.random() * notes.length);
             currentTarget = notes[randomIndex];
-            matchFrames = 0; // 프레임 초기화
+            matchFrames = 0;
             
             uiTargetNote.innerText = currentTarget.name;
             uiTargetHzHint.innerText = "(목표 주파수: " + currentTarget.hz + " Hz)";
@@ -218,56 +217,62 @@
             for (let i = 0; i < bufferLength; i++) {
                 if (freqData[i] > maxVal) { maxVal = freqData[i]; maxIndex = i; }
             }
-            // 노이즈 필터(noiseThreshold) 값보다 큰 소리일 때만 주파수를 계산합니다.
             let rawFreq = rawVol > noiseThreshold ? Math.round(maxIndex * (audioCtx.sampleRate / analyser.fftSize)) : 0;
             uiFreq.innerText = rawFreq;
 
-            // 시각적 부드러움을 위한 보간 연산
             smoothVol += (rawVol - smoothVol) * 0.15;
             smoothFreq += (rawFreq - smoothFreq) * 0.15;
             if(smoothFreq > 10) phase += 0.1; 
 
-            // --- 계이름 게임 정답 판정 (노이즈 필터 & 유지 시간 적용) ---
-            if (isGameMode && !matchTimer) { // 새 목표를 대기 중(matchTimer 실행 중)이 아닐 때만 판정
+            if (isGameMode && !matchTimer) {
                 if (rawVol > noiseThreshold) {
                     if (Math.abs(rawFreq - currentTarget.hz) <= 20) {
-                        matchFrames++; // 비슷한 음정이 들어오면 카운트 증가
-                        
+                        matchFrames++;
                         if (matchFrames >= REQUIRED_FRAMES) {
                             uiGameMsg.innerText = "🎉 정답! 훌륭합니다!";
                             uiGameMsg.style.color = "#00ffcc";
                             hud.classList.add('success-border');
                             matchTimer = setTimeout(() => { setNewTarget(); matchTimer = null; }, 2000);
                         } else {
-                            // 진행 상황 표시 (사용자가 소리를 더 길게 내도록 유도)
                             let progress = Math.min(Math.floor((matchFrames / REQUIRED_FRAMES) * 100), 99);
                             uiGameMsg.innerText = `유지하세요... ${progress}%`;
                             uiGameMsg.style.color = "#ffb703";
                         }
                     } else {
-                        // 음정이 빗나가면 즉시 초기화
                         matchFrames = 0;
                         uiGameMsg.innerText = "소리를 내보세요!";
                     }
                 } else {
-                    // 소리가 노이즈 필터보다 작아지면 초기화
                     matchFrames = 0;
                     uiGameMsg.innerText = "소리를 내보세요!";
                     hud.classList.remove('success-border');
                 }
             }
 
-            // 캔버스 그리기
             ctx.fillStyle = '#111';
             ctx.fillRect(0, 0, width, height);
             drawGrid();
 
-            // 1번 캡처(노랑), 2번 캡처(분홍) 그리기
-            if (capturedPath1) drawPath(capturedPath1, 'rgba(255, 183, 3, 0.7)', 3);
-            if (capturedPath2) drawPath(capturedPath2, 'rgba(255, 105, 180, 0.7)', 3);
+            // 텍스트 설정 (우측 상단 정렬)
+            ctx.font = "bold 20px 'Helvetica Neue', Arial, sans-serif";
+            ctx.textAlign = "right";
+            ctx.textBaseline = "top";
+
+            // 1번 캡처(노랑) 그리기 및 진동수 표시
+            if (capturedPath1) {
+                drawPath(capturedPath1, 'rgba(255, 183, 3, 0.7)', 3);
+                ctx.fillStyle = 'rgba(255, 183, 3, 1)';
+                ctx.fillText(`캡처 1: ${capturedFreq1} Hz`, width - 20, 20);
+            }
+            
+            // 2번 캡처(분홍) 그리기 및 진동수 표시
+            if (capturedPath2) {
+                drawPath(capturedPath2, 'rgba(255, 105, 180, 0.7)', 3);
+                ctx.fillStyle = 'rgba(255, 105, 180, 1)';
+                ctx.fillText(`캡처 2: ${capturedFreq2} Hz`, width - 20, 50);
+            }
 
             let currentPath = [];
-            // 파동을 그릴 때도 노이즈 필터보다 볼륨이 작으면 파동이 잔잔해지도록 처리
             let effectiveVol = (smoothVol > noiseThreshold) ? smoothVol : smoothVol * 0.2; 
             
             if (isIdealMode) {
@@ -283,7 +288,6 @@
                 const sliceWidth = width * 1.0 / bufferLength;
                 let x = 0;
                 for (let i = 0; i < bufferLength; i++) {
-                    // 노이즈 필터 이하면 파형 높이를 억제
                     let v = timeData[i] / 128.0; 
                     if (rawVol <= noiseThreshold) v = 1 + (v - 1) * 0.2; 
                     const y = v * height / 2;
@@ -292,12 +296,10 @@
                 }
             }
             
-            // 현재 실시간 파동(네온 그린) 그리기
             drawPath(currentPath, '#00ffcc', 4);
             window._tempCurrentPath = currentPath;
         }
 
-        // --- 이벤트 리스너 ---
         document.getElementById('startButton').addEventListener('click', initAudio);
 
         btnMode.addEventListener('click', () => {
@@ -319,6 +321,7 @@
         btnCap1.addEventListener('click', () => {
             if(window._tempCurrentPath) {
                 capturedPath1 = [...window._tempCurrentPath];
+                capturedFreq1 = uiFreq.innerText; // 화면에 표시된 현재 Hz 값 저장
                 btnCap1.style.display = 'none';
                 updateClearButtonVisibility();
             }
@@ -327,6 +330,7 @@
         btnCap2.addEventListener('click', () => {
             if(window._tempCurrentPath) {
                 capturedPath2 = [...window._tempCurrentPath];
+                capturedFreq2 = uiFreq.innerText; // 화면에 표시된 현재 Hz 값 저장
                 btnCap2.style.display = 'none';
                 updateClearButtonVisibility();
             }
@@ -335,6 +339,8 @@
         btnClear.addEventListener('click', () => {
             capturedPath1 = null;
             capturedPath2 = null;
+            capturedFreq1 = null;
+            capturedFreq2 = null;
             btnCap1.style.display = 'block';
             btnCap2.style.display = 'block';
             updateClearButtonVisibility();
